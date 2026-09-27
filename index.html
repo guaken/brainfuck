@@ -1,0 +1,1689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Brainfuck IDE - 优化版</title>
+<style>
+/* === CSS 变量系统 === */
+:root {
+  --color-background: #0a0a0a;
+  --color-foreground: #f0f0f0;
+  --color-accent: #00ff88;
+  --color-border: #333;
+  --color-highlight: #ff4444;
+  --color-dimmed: #666;
+  --color-keyword: #ffcc00;
+  --color-operator: #44aaff;
+  --color-inputoutput: #ff66cc;
+  --color-loop: #aa66ff;
+  --color-track: #222;
+  --color-line-number: #555;
+  --color-gutter: #1a1a1a;
+  --color-selection: rgba(0, 255, 136, 0.15);
+  --font-family-main: 13px/1.3 "SF Mono", "Fira Code", "Consolas", monospace;
+  --font-family-ui: 12px/1.2 "SF Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* === 亮主题变量 === */
+[data-theme="light"] {
+  --color-background: #f5f5f5;
+  --color-foreground: #111111;
+  --color-border: #cccccc;
+  --color-dimmed: #888888;
+  --color-track: #e0e0e0;
+  --color-line-number: #aaaaaa;
+  --color-gutter: #eaeaea;
+  --color-selection: rgba(0, 150, 80, 0.12);
+}
+
+/* === 全局重置 === */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font: var(--font-family-main);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* === 区域A: 设置区 10% === */
+#settings-zone {
+  height: 10vh;
+  min-height: 55px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  flex-wrap: wrap;
+}
+
+#settings-zone button {
+  background: var(--color-track);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  padding: 6px 14px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+#settings-zone button:hover {
+  background: #333;
+  border-color: var(--color-accent);
+}
+
+#settings-zone .button-run {
+  background: var(--color-accent);
+  color: var(--color-background);
+  border-color: var(--color-accent);
+}
+
+#settings-zone .button-run:hover {
+  background: #00cc6a;
+}
+
+#settings-zone .button-stop {
+  background: var(--color-highlight);
+  color: var(--color-foreground);
+  border-color: var(--color-highlight);
+}
+
+#settings-zone .button-stop:hover {
+  background: #cc3333;
+}
+
+#settings-zone .execution-stats {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-dimmed);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+#settings-zone .execution-stats span {
+  color: var(--color-accent);
+  font-weight: bold;
+}
+
+/* === 全屏悬浮菜单 === */
+#menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: none;
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+
+#menu-overlay.show {
+  display: flex;
+}
+
+#menu-panel {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  padding: 32px 40px;
+  min-width: 340px;
+  max-width: 90vw;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+#menu-panel h3 {
+  font-size: 14px;
+  color: var(--color-accent);
+  margin-bottom: 20px;
+  text-align: center;
+  letter-spacing: 2px;
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.menu-row label {
+  width: 60px;
+  font-size: 11px;
+  color: var(--color-dimmed);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.menu-row input[type="range"] {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  background: var(--color-border);
+  border-radius: 2px;
+  outline: none;
+  min-width: 120px;
+}
+
+.menu-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--color-accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.menu-row input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--color-accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.menu-row .value-display {
+  width: 60px;
+  font-size: 11px;
+  color: var(--color-accent);
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.menu-row select {
+  background: var(--color-track);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  flex: 1;
+  border-radius: 3px;
+}
+
+.menu-row select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+#menu-close {
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px;
+  background: var(--color-track);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+#menu-close:hover {
+  background: #333;
+  border-color: var(--color-accent);
+}
+
+/* === 区域B: 内存区 40% === */
+#memory-zone {
+  height: 40vh;
+  min-height: 180px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+}
+
+#memory-zone .zone-title {
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--color-dimmed);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#memory-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 2px;
+}
+
+.memory-cell {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex-shrink: 0;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+.memory-cell.active {
+  border-color: var(--color-accent);
+  background: rgba(0, 255, 136, 0.08);
+  box-shadow: 0 0 6px rgba(0, 255, 136, 0.2);
+}
+
+.memory-cell.changed {
+  animation: cellFlash 0.3s ease;
+}
+
+@keyframes cellFlash {
+  0% { background: rgba(0, 255, 136, 0.3); }
+  100% { background: transparent; }
+}
+
+.memory-value {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--color-foreground);
+}
+
+.memory-pointer {
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  font-size: 8px;
+  color: var(--color-accent);
+  font-weight: bold;
+}
+
+.memory-ascii {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 11px;
+  color: var(--color-foreground);
+  font-weight: bold;
+}
+
+/* === 区域C: 快捷输入 10% === */
+#input-zone {
+  height: 10vh;
+  min-height: 45px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  flex-wrap: wrap;
+}
+
+#input-zone button {
+  background: var(--color-track);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  padding: 5px 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: bold;
+  min-width: 32px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+
+#input-zone button:hover {
+  background: #333;
+  border-color: var(--color-accent);
+}
+
+#input-zone button:active {
+  background: var(--color-accent);
+  color: var(--color-background);
+}
+
+#input-zone .input-buffer-display {
+  font-size: 10px;
+  color: var(--color-dimmed);
+  margin-right: 4px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* === 区域D: 输出区 10% === */
+#output-zone {
+  height: 10vh;
+  min-height: 45px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+}
+
+#output-zone .zone-title {
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--color-dimmed);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+}
+
+#output-text {
+  flex: 1;
+  padding: 4px 8px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+}
+
+/* === 区域E: 代码区 30% === */
+#code-zone {
+  height: 30vh;
+  min-height: 130px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+#code-zone .zone-title {
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--color-dimmed);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+}
+
+#code-editor {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+}
+
+#code-gutter {
+  width: 40px;
+  background: var(--color-gutter);
+  border-right: 1px solid var(--color-border);
+  padding: 6px 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--color-line-number);
+  text-align: right;
+  overflow: hidden;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+#code-editor-main {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#code-input {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--color-foreground);
+  border: none;
+  padding: 6px;
+  font: inherit;
+  font-size: 13px;
+  white-space: pre;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  overflow: auto;
+  resize: none;
+  outline: none;
+  z-index: 2;
+  tab-size: 2;
+}
+
+#code-highlight {
+  position: absolute;
+  inset: 0;
+  padding: 6px;
+  font: inherit;
+  font-size: 13px;
+  white-space: pre;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  overflow: auto;
+  pointer-events: none;
+  z-index: 1;
+  color: var(--color-foreground);
+}
+
+/* 语法高亮类 */
+.token-operator { color: var(--color-operator); }
+.token-keyword { color: var(--color-keyword); }
+.token-inputoutput { color: var(--color-inputoutput); }
+.token-loop { color: var(--color-loop); }
+.token-comment { color: var(--color-dimmed); }
+.token-current {
+  background: var(--color-selection);
+  box-shadow: 0 0 4px var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 2px;
+}
+
+/* === 输入弹窗 === */
+#input-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: none;
+  z-index: 300;
+  align-items: center;
+  justify-content: center;
+}
+
+#input-dialog-overlay.show {
+  display: flex;
+}
+
+#input-dialog-panel {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  padding: 24px 32px;
+  min-width: 300px;
+  border-radius: 6px;
+}
+
+#input-dialog-panel h4 {
+  font-size: 13px;
+  color: var(--color-accent);
+  margin-bottom: 12px;
+}
+
+#input-dialog-panel input {
+  width: 100%;
+  padding: 8px;
+  background: var(--color-track);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  font: inherit;
+  font-size: 13px;
+  border-radius: 3px;
+  margin-bottom: 12px;
+}
+
+#input-dialog-panel input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+#input-dialog-panel button {
+  padding: 6px 16px;
+  background: var(--color-accent);
+  color: var(--color-background);
+  border: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+/* === 滚动条 === */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 2px;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #bbb;
+}
+
+/* === 触摸设备优化 === */
+@media (pointer: coarse) {
+  #settings-zone button,
+  #input-zone button {
+    min-height: 40px;
+    min-width: 40px;
+    padding: 8px 12px;
+  }
+
+  #settings-zone button:active,
+  #input-zone button:active {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+
+  .memory-cell {
+    min-width: 48px;
+    min-height: 48px;
+  }
+}
+
+/* === 响应式 === */
+@media (max-width: 600px) {
+  #settings-zone {
+    height: auto;
+    min-height: 45px;
+    padding: 4px 6px;
+  }
+  #settings-zone button {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  .memory-cell {
+    width: 48px;
+    height: 48px;
+  }
+  .memory-value {
+    font-size: 14px;
+  }
+  #code-gutter {
+    width: 32px;
+    font-size: 11px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- === 区域A: 设置区 10% === -->
+<div id="settings-zone">
+  <button class="button-run" data-action="run">运行</button>
+  <button class="button-stop" data-action="stop">停止</button>
+  <button data-action="reset">重置</button>
+  <button data-action="clear">清输出</button>
+  <button data-action="example">示例</button>
+  <button data-action="format">美化</button>
+  <button data-action="minify">缩减</button>
+  <button data-action="settings">设置</button>
+  <div class="execution-stats">
+    <div>步数: <span id="stat-step-count">0</span></div>
+    <div>指针: <span id="stat-pointer-position">0</span></div>
+    <div>循环深度: <span id="stat-loop-depth">0</span></div>
+  </div>
+</div>
+
+<!-- === 全屏悬浮菜单 === -->
+<div id="menu-overlay">
+  <div id="menu-panel">
+    <h3>设 置</h3>
+    <div class="menu-row">
+      <label>步限</label>
+      <input type="range" id="config-max-steps" min="10000" max="10000000" step="10000" value="1000000"
+             oninput="updateMenuDisplayValue(this, 'display-max-steps')">
+      <span class="value-display" id="display-max-steps">1M</span>
+    </div>
+    <div class="menu-row">
+      <label>批量步</label>
+      <input type="range" id="config-batch-size" min="100" max="100000" step="100" value="10000"
+             oninput="updateMenuDisplayValue(this, 'display-batch-size')">
+      <span class="value-display" id="display-batch-size">10000</span>
+    </div>
+    <div class="menu-row">
+      <label>主题</label>
+      <select id="config-theme" onchange="switchApplicationTheme(this.value)">
+        <option value="dark">暗色</option>
+        <option value="light">亮色</option>
+      </select>
+    </div>
+    <div class="menu-row">
+      <label>索引</label>
+      <select id="config-show-index" onchange="if(!isExecutionRunning)renderMemoryDisplay()">
+        <option value="1">显示</option>
+        <option value="0">隐藏</option>
+      </select>
+    </div>
+    <div class="menu-row">
+      <label>单元宽</label>
+      <input type="range" id="config-cell-width" min="40" max="100" value="56"
+             oninput="updateMenuDisplayValue(this, 'display-cell-width'); if(!isExecutionRunning)renderMemoryDisplay()">
+      <span class="value-display" id="display-cell-width">56</span>
+    </div>
+    <div class="menu-row">
+      <label>内存格</label>
+      <input type="range" id="config-memory-range" min="16" max="128" value="48" step="8"
+             oninput="updateMenuDisplayValue(this, 'display-memory-range'); if(!isExecutionRunning)renderMemoryDisplay()">
+      <span class="value-display" id="display-memory-range">48</span>
+    </div>
+    <button id="menu-close">关闭</button>
+  </div>
+</div>
+
+<!-- === 区域B: 内存区 40% === -->
+<div id="memory-zone">
+  <div class="zone-title">
+    <span>内存 / 指针 / ASCII</span>
+    <span id="memory-info" style="font-size:10px;color:var(--color-dimmed)">共 30000 单元</span>
+  </div>
+  <div id="memory-scroll"></div>
+</div>
+
+<!-- === 区域C: 快捷输入 10% === -->
+<div id="input-zone">
+  <button data-action="insert" data-char=">">&gt;</button>
+  <button data-action="insert" data-char="<">&lt;</button>
+  <button data-action="insert" data-char="+">+</button>
+  <button data-action="insert" data-char="-">-</button>
+  <button data-action="insert" data-char=".">.</button>
+  <button data-action="insert" data-char=",">,</button>
+  <button data-action="insert" data-char="[">[</button>
+  <button data-action="insert" data-char="]">]</button>
+  <button data-action="insert" data-char=" ">␣</button>
+  <button data-action="insert" data-char="\n">↵</button>
+  <button data-action="insert" data-char="backspace">⌫</button>
+  <button data-action="move" data-dir="-1">←</button>
+  <button data-action="move" data-dir="1">→</button>
+  <span style="flex:1"></span>
+  <span class="input-buffer-display" id="input-buffer-display" title="输入缓冲区">缓冲区: 空</span>
+  <span style="font-size:10px;color:var(--color-dimmed);margin-right:4px">延迟</span>
+  <input type="range" id="config-delay" min="0" max="500" step="5" value="0"
+         style="width:100px;height:4px;-webkit-appearance:none;background:var(--color-border);border-radius:2px;outline:none"
+         oninput="document.getElementById('display-delay').textContent = this.value + 'ms'">
+  <span id="display-delay" style="font-size:10px;color:var(--color-accent);min-width:36px;text-align:right">0ms</span>
+</div>
+
+<!-- === 区域D: 输出区 10% === -->
+<div id="output-zone">
+  <div class="zone-title">
+    <span>输出</span>
+    <span id="output-info" style="font-size:10px;color:var(--color-dimmed)">0 字符</span>
+  </div>
+  <div id="output-text"></div>
+</div>
+
+<!-- === 区域E: 代码区 30% === -->
+<div id="code-zone">
+  <div class="zone-title">
+    <span>代码</span>
+    <span id="code-info" style="font-size:10px;color:var(--color-dimmed)">0 行 | 0 指令</span>
+  </div>
+  <div id="code-editor">
+    <div id="code-gutter"></div>
+    <div id="code-editor-main">
+      <div id="code-highlight"></div>
+      <textarea id="code-input" spellcheck="false" placeholder="输入 Brainfuck 代码..." inputmode="none"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- === 输入弹窗 === -->
+<div id="input-dialog-overlay">
+  <div id="input-dialog-panel">
+    <h4>程序请求输入</h4>
+    <p style="font-size:11px;color:var(--color-dimmed);margin-bottom:8px">Brainfuck 程序执行了 ',' 指令，请输入一个字符或数字：</p>
+    <input type="text" id="input-dialog-field" maxlength="1" placeholder="输入字符" autofocus
+           onkeydown="if(event.key==='Enter')confirmInputDialog()">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="input-dialog-cancel" style="background:var(--color-track);color:var(--color-foreground);border:1px solid var(--color-border)">取消</button>
+      <button id="input-dialog-confirm">确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// ============================================================
+// Brainfuck IDE - 优化版 JavaScript
+// 语义化命名，功能完整，性能优化
+// ============================================================
+
+// === 全局状态 ===
+const BRAINFUCK_MEMORY_SIZE = 30000;
+const BRAINFUCK_VALID_CHARS = '><+-.,[]';
+const BRAINFUCK_TOKEN_CLASSES = {
+  '>': 'token-operator',
+  '<': 'token-operator',
+  '+': 'token-keyword',
+  '-': 'token-keyword',
+  '.': 'token-inputoutput',
+  ',': 'token-inputoutput',
+  '[': 'token-loop',
+  ']': 'token-loop'
+};
+
+// 执行状态
+let executionMemory = null;
+let memoryPointer = 0;
+let instructionPointer = 0;
+let isExecutionRunning = false;
+let executionStepTimer = null;
+let executionStepCount = 0;
+let sourceCodeText = '';
+let outputBufferText = '';
+let loopStack = [];
+let inputBufferQueue = [];
+let isWaitingForInput = false;
+let lastRenderedPointer = -1;
+let memoryCellElements = {};
+let instructionPositionMap = []; // 指令位置到源码位置的映射
+
+// DOM 元素缓存
+const domElements = {};
+
+function cacheDomElements() {
+  domElements.codeInput = document.getElementById('code-input');
+  domElements.codeHighlight = document.getElementById('code-highlight');
+  domElements.codeGutter = document.getElementById('code-gutter');
+  domElements.memoryScroll = document.getElementById('memory-scroll');
+  domElements.outputText = document.getElementById('output-text');
+  domElements.statStepCount = document.getElementById('stat-step-count');
+  domElements.statPointerPosition = document.getElementById('stat-pointer-position');
+  domElements.statLoopDepth = document.getElementById('stat-loop-depth');
+  domElements.outputInfo = document.getElementById('output-info');
+  domElements.codeInfo = document.getElementById('code-info');
+  domElements.inputBufferDisplay = document.getElementById('input-buffer-display');
+  domElements.inputDialogOverlay = document.getElementById('input-dialog-overlay');
+  domElements.inputDialogField = document.getElementById('input-dialog-field');
+}
+
+// === 配置读取 ===
+function getConfigurationValue(configKey) {
+  const configMap = {
+    delay: 'config-delay',
+    maxSteps: 'config-max-steps',
+    batchSize: 'config-batch-size',
+    theme: 'config-theme',
+    showIndex: 'config-show-index',
+    cellWidth: 'config-cell-width',
+    memoryRange: 'config-memory-range'
+  };
+  const inputElement = document.getElementById(configMap[configKey]);
+  if (!inputElement) return 0;
+  if (inputElement.type === 'range') {
+    return parseInt(inputElement.value) || 0;
+  }
+  return inputElement.value;
+}
+
+// === 菜单控制 ===
+function toggleSettingsMenu() {
+  document.getElementById('menu-overlay').classList.toggle('show');
+}
+
+function updateMenuDisplayValue(rangeElement, displayElementId) {
+  const displayElement = document.getElementById(displayElementId);
+  let displayValue = rangeElement.value;
+  if (displayElementId === 'display-max-steps') {
+    const numericValue = parseInt(rangeElement.value);
+    if (numericValue >= 1000000) {
+      displayValue = (numericValue / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    } else {
+      displayValue = (numericValue / 1000).toFixed(0) + 'K';
+    }
+  }
+  if (displayElement) {
+    displayElement.textContent = displayValue;
+  }
+}
+
+// === 主题切换 ===
+function switchApplicationTheme(themeMode) {
+  const htmlElement = document.documentElement;
+  if (themeMode === 'light') {
+    htmlElement.setAttribute('data-theme', 'light');
+  } else {
+    htmlElement.removeAttribute('data-theme');
+  }
+}
+
+// === 内存管理 ===
+function initializeMemory() {
+  executionMemory = new Int8Array(BRAINFUCK_MEMORY_SIZE);
+  memoryPointer = 0;
+  instructionPointer = 0;
+  outputBufferText = '';
+  executionStepCount = 0;
+  loopStack = [];
+  inputBufferQueue = [];
+  isWaitingForInput = false;
+  lastRenderedPointer = -1;
+  memoryCellElements = {};
+  instructionPositionMap = [];
+  renderMemoryDisplay();
+  domElements.outputText.textContent = '';
+  updateExecutionStatistics();
+  updateOutputInfo();
+}
+
+function renderMemoryDisplay() {
+  const container = domElements.memoryScroll;
+  const showIndexEnabled = getConfigurationValue('showIndex') === '1';
+  const cellWidth = getConfigurationValue('cellWidth') || 56;
+  const memoryRange = getConfigurationValue('memoryRange') || 48;
+  const startIndex = Math.max(0, memoryPointer - memoryRange);
+  const endIndex = Math.min(executionMemory.length, memoryPointer + memoryRange + 1);
+
+  // 差异更新：只更新变化的部分
+  const existingCells = container.querySelectorAll('.memory-cell');
+  const existingMap = {};
+  existingCells.forEach(cell => {
+    const index = parseInt(cell.dataset.index);
+    if (!isNaN(index)) {
+      existingMap[index] = cell;
+    }
+  });
+
+  // 构建新的单元格映射
+  const newCellMap = {};
+  let fragmentHtml = '';
+
+  for (let index = startIndex; index < endIndex; index++) {
+    const cellValue = executionMemory[index];
+    let asciiCharacter;
+    if (cellValue >= 32 && cellValue < 127) {
+      asciiCharacter = String.fromCharCode(cellValue);
+    } else if (cellValue === 10) {
+      asciiCharacter = '\n';
+    } else if (cellValue === 13) {
+      asciiCharacter = '\r';
+    } else if (cellValue === 9) {
+      asciiCharacter = '\t';
+    } else {
+      asciiCharacter = '·';
+    }
+
+    const isActive = index === memoryPointer;
+    const pointerLabel = isActive ? '▶' : (showIndexEnabled ? String(index) : '');
+    const activeClass = isActive ? 'active' : '';
+
+    if (existingMap[index]) {
+      // 更新现有单元格
+      const existingCell = existingMap[index];
+      existingCell.className = 'memory-cell ' + activeClass;
+      existingCell.style.width = cellWidth + 'px';
+      existingCell.style.height = cellWidth + 'px';
+      existingCell.querySelector('.memory-value').textContent = cellValue;
+      existingCell.querySelector('.memory-pointer').textContent = pointerLabel;
+      existingCell.querySelector('.memory-ascii').textContent = asciiCharacter;
+      newCellMap[index] = existingCell;
+    } else {
+      // 创建新单元格
+      fragmentHtml += '<div class="memory-cell ' + activeClass + '" data-index="' + index + '" style="width:' + cellWidth + 'px;height:' + cellWidth + 'px">' +
+        '<span class="memory-pointer">' + pointerLabel + '</span>' +
+        '<span class="memory-value">' + cellValue + '</span>' +
+        '<span class="memory-ascii">' + asciiCharacter + '</span>' +
+        '</div>';
+    }
+  }
+
+  // 移除不再需要的单元格
+  existingCells.forEach(cell => {
+    const index = parseInt(cell.dataset.index);
+    if (index < startIndex || index >= endIndex) {
+      cell.remove();
+    }
+  });
+
+  // 添加新单元格
+  if (fragmentHtml) {
+    const tempContainer = document.createElement('div');
+    tempContainer.innerHTML = fragmentHtml;
+    while (tempContainer.firstChild) {
+      container.appendChild(tempContainer.firstChild);
+    }
+  }
+
+  // 滚动到活动单元格
+  const activeCell = container.querySelector('.memory-cell.active');
+  if (activeCell) {
+    activeCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  }
+
+  lastRenderedPointer = memoryPointer;
+}
+
+function updateSingleMemoryCell(cellIndex) {
+  const cellElement = document.querySelector('.memory-cell[data-index="' + cellIndex + '"]');
+  if (!cellElement) return;
+
+  const cellValue = executionMemory[cellIndex];
+  let asciiCharacter;
+  if (cellValue >= 32 && cellValue < 127) {
+    asciiCharacter = String.fromCharCode(cellValue);
+  } else if (cellValue === 10) {
+    asciiCharacter = '\n';
+  } else if (cellValue === 13) {
+    asciiCharacter = '\r';
+  } else if (cellValue === 9) {
+    asciiCharacter = '\t';
+  } else {
+    asciiCharacter = '·';
+  }
+
+  const valueElement = cellElement.querySelector('.memory-value');
+  const asciiElement = cellElement.querySelector('.memory-ascii');
+
+  if (valueElement) valueElement.textContent = cellValue;
+  if (asciiElement) asciiElement.textContent = asciiCharacter;
+
+  cellElement.classList.add('changed');
+  setTimeout(() => cellElement.classList.remove('changed'), 300);
+}
+
+function updateExecutionStatistics() {
+  if (domElements.statStepCount) {
+    domElements.statStepCount.textContent = executionStepCount.toLocaleString();
+  }
+  if (domElements.statPointerPosition) {
+    domElements.statPointerPosition.textContent = memoryPointer;
+  }
+  if (domElements.statLoopDepth) {
+    domElements.statLoopDepth.textContent = loopStack.length;
+  }
+}
+
+function updateOutputInfo() {
+  if (domElements.outputInfo) {
+    domElements.outputInfo.textContent = outputBufferText.length + ' 字符';
+  }
+}
+
+// === 代码高亮与编辑器 ===
+function escapeHtmlEntities(textContent) {
+  const temporaryDiv = document.createElement('div');
+  temporaryDiv.textContent = textContent;
+  return temporaryDiv.innerHTML;
+}
+
+function buildInstructionPositionMap(sourceText) {
+  instructionPositionMap = [];
+  let instructionIndex = 0;
+  for (let sourceIndex = 0; sourceIndex < sourceText.length; sourceIndex++) {
+    const character = sourceText[sourceIndex];
+    if (BRAINFUCK_VALID_CHARS.includes(character)) {
+      instructionPositionMap[instructionIndex] = sourceIndex;
+      instructionIndex++;
+    }
+  }
+  return instructionIndex;
+}
+
+function updateCodeHighlighting() {
+  const rawCode = domElements.codeInput.value;
+  let highlightedHtml = '';
+  let lineCount = 1;
+
+  for (let index = 0; index < rawCode.length; index++) {
+    const character = rawCode[index];
+    if (character === '') {
+      lineCount++;
+    }
+    const tokenClass = BRAINFUCK_TOKEN_CLASSES[character];
+    if (tokenClass) {
+      highlightedHtml += '<span class="' + tokenClass + '" data-pos="' + index + '">' + escapeHtmlEntities(character) + '</span>';
+    } else {
+      highlightedHtml += escapeHtmlEntities(character);
+    }
+  }
+
+  domElements.codeHighlight.innerHTML = highlightedHtml;
+  updateLineNumbers(lineCount);
+  updateCodeInfo(rawCode);
+  highlightCurrentInstruction();
+}
+
+function updateLineNumbers(totalLines) {
+  let gutterHtml = '';
+  for (let line = 1; line <= totalLines; line++) {
+    gutterHtml += line + '';
+  }
+  domElements.codeGutter.textContent = gutterHtml;
+}
+
+function updateCodeInfo(rawCode) {
+  const lines = rawCode.split('').length;
+  const instructionCount = buildInstructionPositionMap(rawCode);
+  if (domElements.codeInfo) {
+    domElements.codeInfo.textContent = lines + ' 行 | ' + instructionCount + ' 指令';
+  }
+}
+
+function highlightCurrentInstruction() {
+  const allSpans = domElements.codeHighlight.querySelectorAll('span');
+  allSpans.forEach(span => span.classList.remove('token-current'));
+
+  if (!isExecutionRunning && instructionPointer === 0) return;
+
+  // 找到当前指令对应的源码位置
+  const sourcePosition = instructionPositionMap[instructionPointer];
+  if (sourcePosition === undefined) return;
+
+  const targetSpan = domElements.codeHighlight.querySelector('span[data-pos="' + sourcePosition + '"]');
+  if (targetSpan) {
+    targetSpan.classList.add('token-current');
+    targetSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function synchronizeEditorScroll() {
+  domElements.codeHighlight.scrollTop = domElements.codeInput.scrollTop;
+  domElements.codeHighlight.scrollLeft = domElements.codeInput.scrollLeft;
+  domElements.codeGutter.scrollTop = domElements.codeInput.scrollTop;
+}
+
+function handleCodeInputChange() {
+  updateCodeHighlighting();
+}
+
+// === 快捷输入 ===
+function insertBrainfuckCharacter(character) {
+  const inputElement = domElements.codeInput;
+  const selectionStart = inputElement.selectionStart;
+  const selectionEnd = inputElement.selectionEnd;
+  const currentValue = inputElement.value;
+
+  if (character === '\b') {
+    // 退格
+    if (selectionStart === selectionEnd && selectionStart > 0) {
+      inputElement.value = currentValue.slice(0, selectionStart - 1) + currentValue.slice(selectionEnd);
+      inputElement.setSelectionRange(selectionStart - 1, selectionStart - 1);
+    } else {
+      inputElement.value = currentValue.slice(0, selectionStart) + currentValue.slice(selectionEnd);
+      inputElement.setSelectionRange(selectionStart, selectionStart);
+    }
+  } else if (character === '\n') {
+    inputElement.value = currentValue.slice(0, selectionStart) + '' + currentValue.slice(selectionEnd);
+    inputElement.setSelectionRange(selectionStart + 1, selectionStart + 1);
+  } else {
+    inputElement.value = currentValue.slice(0, selectionStart) + character + currentValue.slice(selectionEnd);
+    inputElement.setSelectionRange(selectionStart + 1, selectionStart + 1);
+  }
+
+  updateCodeHighlighting();
+  inputElement.focus();
+}
+
+function moveEditorCursor(direction) {
+  const inputElement = domElements.codeInput;
+  const newPosition = Math.max(0, Math.min(inputElement.selectionStart + direction, inputElement.value.length));
+  inputElement.setSelectionRange(newPosition, newPosition);
+  inputElement.focus();
+}
+
+// === 代码美化 ===
+function formatBrainfuckCode() {
+  const rawCode = domElements.codeInput.value;
+  if (!rawCode.trim()) return;
+
+  let formattedCode = '';
+  let indentationLevel = 0;
+  const indentSize = 2;
+
+  for (let index = 0; index < rawCode.length; index++) {
+    const character = rawCode[index];
+    if (!BRAINFUCK_VALID_CHARS.includes(character)) continue;
+
+    if (character === ']') {
+      indentationLevel = Math.max(0, indentationLevel - 1);
+    }
+
+    if (character === '[') {
+      formattedCode += character + '\n' + ' '.repeat(indentSize * (indentationLevel + 1));
+      indentationLevel++;
+    } else if (character === ']') {
+      formattedCode = formattedCode.trimEnd();
+      formattedCode += '\n' + ' '.repeat(indentSize * indentationLevel) + character + '\n' + ' '.repeat(indentSize * indentationLevel);
+    } else {
+      formattedCode += character;
+    }
+  }
+
+  // 清理多余空行
+  formattedCode = formattedCode.replace(/\n{3,}/g, '\n\n').trim();
+
+  domElements.codeInput.value = formattedCode;
+  updateCodeHighlighting();
+}
+
+// === 代码缩减 ===
+function minifyBrainfuckCode() {
+  const rawCode = domElements.codeInput.value;
+  if (!rawCode.trim()) return;
+
+  let minifiedCode = '';
+  for (let index = 0; index < rawCode.length; index++) {
+    const character = rawCode[index];
+    if (BRAINFUCK_VALID_CHARS.includes(character)) {
+      minifiedCode += character;
+    }
+  }
+
+  domElements.codeInput.value = minifiedCode;
+  updateCodeHighlighting();
+}
+
+// === 输入处理 ===
+function handleKeyboardInput(event) {
+  const allowedNavigationKeys = [
+    'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+    'Home', 'End', 'PageUp', 'PageDown',
+    'Delete', 'Backspace', 'Control', 'Alt', 'Shift', 'Meta', 'Escape',
+    'Tab', 'Enter'
+  ];
+
+  if (allowedNavigationKeys.includes(event.key)) return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+  const isValidBrainfuckChar = BRAINFUCK_VALID_CHARS.includes(event.key);
+  const isWhitespace = event.key === ' ';
+  const isNewline = event.key === 'Enter';
+
+  if (!isValidBrainfuckChar && !isWhitespace && !isNewline) {
+    event.preventDefault();
+  }
+}
+
+// === 执行引擎 ===
+function executeSingleStep() {
+  if (!isExecutionRunning || instructionPointer >= sourceCodeText.length) {
+    stopBrainfuckExecution();
+    return;
+  }
+
+  const maximumSteps = getConfigurationValue('maxSteps') || 1000000;
+  if (++executionStepCount > maximumSteps) {
+    stopBrainfuckExecution();
+    outputBufferText += '\n[错误: 超过最大步数限制 (' + maximumSteps.toLocaleString() + ')]';
+    domElements.outputText.textContent = outputBufferText;
+    updateOutputInfo();
+    return;
+  }
+
+  const currentCommand = sourceCodeText[instructionPointer];
+  const previousPointer = memoryPointer;
+
+  switch (currentCommand) {
+    case '>':
+      memoryPointer = (memoryPointer + 1) % BRAINFUCK_MEMORY_SIZE;
+      break;
+    case '<':
+      memoryPointer = (memoryPointer - 1 + BRAINFUCK_MEMORY_SIZE) % BRAINFUCK_MEMORY_SIZE;
+      break;
+    case '+':
+      executionMemory[memoryPointer] = (executionMemory[memoryPointer] + 1) & 255;
+      break;
+    case '-':
+      executionMemory[memoryPointer] = (executionMemory[memoryPointer] - 1) & 255;
+      break;
+    case '.':
+      outputBufferText += String.fromCharCode(executionMemory[memoryPointer]);
+      domElements.outputText.textContent = outputBufferText;
+      updateOutputInfo();
+      break;
+    case ',':
+      handleInputRequest();
+      return; // 暂停执行等待输入
+    case '[':
+      if (executionMemory[memoryPointer] === 0) {
+        let loopDepth = 1;
+        while (loopDepth > 0 && ++instructionPointer < sourceCodeText.length) {
+          if (sourceCodeText[instructionPointer] === '[') {
+            loopDepth++;
+          } else if (sourceCodeText[instructionPointer] === ']') {
+            loopDepth--;
+          }
+        }
+      } else {
+        loopStack.push(instructionPointer);
+      }
+      break;
+    case ']':
+      if (executionMemory[memoryPointer] !== 0) {
+        instructionPointer = loopStack[loopStack.length - 1];
+      } else {
+        loopStack.pop();
+      }
+      break;
+  }
+
+  instructionPointer++;
+
+  // 差异更新内存显示
+  if (previousPointer !== memoryPointer) {
+    renderMemoryDisplay();
+  } else if (currentCommand === '+' || currentCommand === '-') {
+    updateSingleMemoryCell(memoryPointer);
+  }
+
+  highlightCurrentInstruction();
+  updateExecutionStatistics();
+
+  if (isExecutionRunning) {
+    const delayMilliseconds = parseInt(document.getElementById('config-delay').value) || 0;
+    if (delayMilliseconds > 0) {
+      executionStepTimer = setTimeout(executeSingleStep, delayMilliseconds);
+    } else {
+      requestAnimationFrame(executeSingleStep);
+    }
+  }
+}
+
+// === 批量执行模式（无延迟时）===
+function executeBatchSteps() {
+  if (!isExecutionRunning || instructionPointer >= sourceCodeText.length) {
+    stopBrainfuckExecution();
+    return;
+  }
+
+  const maximumSteps = getConfigurationValue('maxSteps') || 1000000;
+  const batchSize = getConfigurationValue('batchSize') || 10000;
+  const delayMilliseconds = parseInt(document.getElementById('config-delay').value) || 0;
+
+  // 如果有延迟，使用单步模式
+  if (delayMilliseconds > 0) {
+    executeSingleStep();
+    return;
+  }
+
+  // 批量执行
+  const batchStartPointer = memoryPointer;
+  let batchModifiedCells = new Set();
+
+  for (let batchIndex = 0; batchIndex < batchSize; batchIndex++) {
+    if (!isExecutionRunning || instructionPointer >= sourceCodeText.length) {
+      break;
+    }
+
+    if (++executionStepCount > maximumSteps) {
+      stopBrainfuckExecution();
+      outputBufferText += '\n[错误: 超过最大步数限制 (' + maximumSteps.toLocaleString() + ')]';
+      domElements.outputText.textContent = outputBufferText;
+      updateOutputInfo();
+      return;
+    }
+
+    const currentCommand = sourceCodeText[instructionPointer];
+
+    switch (currentCommand) {
+      case '>':
+        memoryPointer = (memoryPointer + 1) % BRAINFUCK_MEMORY_SIZE;
+        break;
+      case '<':
+        memoryPointer = (memoryPointer - 1 + BRAINFUCK_MEMORY_SIZE) % BRAINFUCK_MEMORY_SIZE;
+        break;
+      case '+':
+        executionMemory[memoryPointer] = (executionMemory[memoryPointer] + 1) & 255;
+        batchModifiedCells.add(memoryPointer);
+        break;
+      case '-':
+        executionMemory[memoryPointer] = (executionMemory[memoryPointer] - 1) & 255;
+        batchModifiedCells.add(memoryPointer);
+        break;
+      case '.':
+        outputBufferText += String.fromCharCode(executionMemory[memoryPointer]);
+        break;
+      case ',':
+        if (inputBufferQueue.length > 0) {
+          executionMemory[memoryPointer] = inputBufferQueue.shift().charCodeAt(0) & 255;
+          updateInputBufferDisplay();
+        } else {
+          // 需要等待输入
+          stopBrainfuckExecution();
+          showInputDialog();
+          return;
+        }
+        break;
+      case '[':
+        if (executionMemory[memoryPointer] === 0) {
+          let loopDepth = 1;
+          while (loopDepth > 0 && ++instructionPointer < sourceCodeText.length) {
+            if (sourceCodeText[instructionPointer] === '[') loopDepth++;
+            else if (sourceCodeText[instructionPointer] === ']') loopDepth--;
+          }
+        } else {
+          loopStack.push(instructionPointer);
+        }
+        break;
+      case ']':
+        if (executionMemory[memoryPointer] !== 0) {
+          instructionPointer = loopStack[loopStack.length - 1];
+        } else {
+          loopStack.pop();
+        }
+        break;
+    }
+
+    instructionPointer++;
+  }
+
+  // 批量更新显示
+  if (batchStartPointer !== memoryPointer) {
+    renderMemoryDisplay();
+  } else {
+    batchModifiedCells.forEach(cellIndex => updateSingleMemoryCell(cellIndex));
+  }
+
+  domElements.outputText.textContent = outputBufferText;
+  updateOutputInfo();
+  highlightCurrentInstruction();
+  updateExecutionStatistics();
+
+  if (isExecutionRunning && instructionPointer < sourceCodeText.length) {
+    requestAnimationFrame(executeBatchSteps);
+  } else {
+    stopBrainfuckExecution();
+  }
+}
+
+// === 输入处理 ===
+function handleInputRequest() {
+  if (inputBufferQueue.length > 0) {
+    executionMemory[memoryPointer] = inputBufferQueue.shift().charCodeAt(0) & 255;
+    updateInputBufferDisplay();
+    instructionPointer++;
+    renderMemoryDisplay();
+    highlightCurrentInstruction();
+    updateExecutionStatistics();
+
+    const delayMilliseconds = parseInt(document.getElementById('config-delay').value) || 0;
+    if (delayMilliseconds > 0) {
+      executionStepTimer = setTimeout(executeSingleStep, delayMilliseconds);
+    } else {
+      requestAnimationFrame(executeBatchSteps);
+    }
+  } else {
+    isWaitingForInput = true;
+    stopBrainfuckExecution();
+    showInputDialog();
+  }
+}
+
+function showInputDialog() {
+  domElements.inputDialogOverlay.classList.add('show');
+  domElements.inputDialogField.value = '';
+  domElements.inputDialogField.focus();
+}
+
+function confirmInputDialog() {
+  const inputValue = domElements.inputDialogField.value;
+  if (inputValue.length > 0) {
+    inputBufferQueue.push(inputValue[0]);
+    updateInputBufferDisplay();
+  }
+  domElements.inputDialogOverlay.classList.remove('show');
+  isWaitingForInput = false;
+
+  // 恢复执行
+  if (sourceCodeText && instructionPointer < sourceCodeText.length) {
+    isExecutionRunning = true;
+    const delayMilliseconds = parseInt(document.getElementById('config-delay').value) || 0;
+    if (delayMilliseconds > 0) {
+      executeSingleStep();
+    } else {
+      executeBatchSteps();
+    }
+  }
+}
+
+function cancelInputDialog() {
+  domElements.inputDialogOverlay.classList.remove('show');
+  isWaitingForInput = false;
+  outputBufferText += '\n[信息: 输入已取消]';
+  domElements.outputText.textContent = outputBufferText;
+  updateOutputInfo();
+}
+
+function updateInputBufferDisplay() {
+  const bufferText = inputBufferQueue.join('');
+  const displayText = bufferText.length > 0 ? '缓冲区: ' + bufferText : '缓冲区: 空';
+  domElements.inputBufferDisplay.textContent = displayText;
+  domElements.inputBufferDisplay.title = '输入缓冲区: ' + (bufferText || '空');
+}
+
+// === 控制函数 ===
+function runBrainfuckCode() {
+  if (isExecutionRunning) return;
+
+  sourceCodeText = domElements.codeInput.value;
+  if (!sourceCodeText.trim()) return;
+
+  // 提取有效指令
+  let validInstructions = '';
+  for (let index = 0; index < sourceCodeText.length; index++) {
+    const character = sourceCodeText[index];
+    if (BRAINFUCK_VALID_CHARS.includes(character)) {
+      validInstructions += character;
+    }
+  }
+
+  if (!validInstructions) {
+    outputBufferText = '[错误: 未找到有效的 Brainfuck 指令]';
+    domElements.outputText.textContent = outputBufferText;
+    updateOutputInfo();
+    return;
+  }
+
+  sourceCodeText = validInstructions;
+  isExecutionRunning = true;
+  initializeMemory();
+  instructionPointer = 0;
+
+  // 构建指令映射
+  buildInstructionPositionMap(domElements.codeInput.value);
+
+  const delayMilliseconds = parseInt(document.getElementById('config-delay').value) || 0;
+  if (delayMilliseconds > 0) {
+    executeSingleStep();
+  } else {
+    executeBatchSteps();
+  }
+}
+
+function stopBrainfuckExecution() {
+  isExecutionRunning = false;
+  clearTimeout(executionStepTimer);
+  executionStepTimer = null;
+}
+
+function resetBrainfuckEnvironment() {
+  stopBrainfuckExecution();
+  initializeMemory();
+  domElements.codeInput.value = '';
+  domElements.codeHighlight.innerHTML = '';
+  domElements.codeGutter.textContent = '';
+  domElements.codeInfo.textContent = '0 行 | 0 指令';
+  sourceCodeText = '';
+  instructionPointer = 0;
+}
+
+function clearOutputDisplay() {
+  outputBufferText = '';
+  domElements.outputText.textContent = '';
+  updateOutputInfo();
+}
+
+function loadExampleProgram() {
+  const exampleCode = '++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.';
+  domElements.codeInput.value = exampleCode;
+  updateCodeHighlighting();
+}
+
+// === 事件绑定 ===
+function initializeEventListeners() {
+  // 键盘输入过滤
+  domElements.codeInput.addEventListener('keydown', handleKeyboardInput);
+
+  // 代码输入变化
+  domElements.codeInput.addEventListener('input', handleCodeInputChange);
+
+  // 同步滚动
+  domElements.codeInput.addEventListener('scroll', synchronizeEditorScroll);
+
+  // 输入对话框回车确认
+  domElements.inputDialogField.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      confirmInputDialog();
+    }
+  });
+
+  // 粘贴时过滤非 Brainfuck 字符
+  domElements.codeInput.addEventListener('paste', function(event) {
+    event.preventDefault();
+    const pastedText = (event.clipboardData || window.clipboardData).getData('text');
+    let filteredText = '';
+    for (let index = 0; index < pastedText.length; index++) {
+      const character = pastedText[index];
+      if (BRAINFUCK_VALID_CHARS.includes(character) || character === '' || character === ' ') {
+        filteredText += character;
+      }
+    }
+
+    const selectionStart = domElements.codeInput.selectionStart;
+    const selectionEnd = domElements.codeInput.selectionEnd;
+    const currentValue = domElements.codeInput.value;
+    domElements.codeInput.value = currentValue.slice(0, selectionStart) + filteredText + currentValue.slice(selectionEnd);
+    domElements.codeInput.setSelectionRange(selectionStart + filteredText.length, selectionStart + filteredText.length);
+    updateCodeHighlighting();
+  });
+
+  // 使用事件委托绑定所有按钮点击（手机浏览器兼容）
+  // 同时支持 click 和 touchstart 以提高响应速度
+  document.addEventListener('click', function(event) {
+    const buttonElement = event.target.closest('button[data-action]');
+    if (!buttonElement) return;
+
+    const action = buttonElement.getAttribute('data-action');
+    switch (action) {
+      case 'run':
+        runBrainfuckCode();
+        break;
+      case 'stop':
+        stopBrainfuckExecution();
+        break;
+      case 'reset':
+        resetBrainfuckEnvironment();
+        break;
+      case 'clear':
+        clearOutputDisplay();
+        break;
+      case 'example':
+        loadExampleProgram();
+        break;
+      case 'format':
+        formatBrainfuckCode();
+        break;
+      case 'minify':
+        minifyBrainfuckCode();
+        break;
+      case 'settings':
+        toggleSettingsMenu();
+        break;
+      case 'insert':
+        const characterToInsert = buttonElement.getAttribute('data-char');
+        if (characterToInsert === 'backspace') {
+          // 退格：删除光标前一个字符
+          const inputElement = domElements.codeInput;
+          const selectionStart = inputElement.selectionStart;
+          if (selectionStart > 0) {
+            inputElement.value = inputElement.value.slice(0, selectionStart - 1) + inputElement.value.slice(selectionStart);
+            inputElement.setSelectionRange(selectionStart - 1, selectionStart - 1);
+            updateCodeHighlighting();
+            inputElement.focus();
+          }
+        } else if (characterToInsert) {
+          insertBrainfuckCharacter(characterToInsert);
+        }
+        break;
+      case 'move':
+        const direction = parseInt(buttonElement.getAttribute('data-dir')) || 0;
+        if (direction !== 0) {
+          moveEditorCursor(direction);
+        }
+        break;
+    }
+  });
+
+  // 菜单关闭按钮
+  const menuCloseButton = document.getElementById('menu-close');
+  if (menuCloseButton) {
+    menuCloseButton.addEventListener('click', toggleSettingsMenu);
+  }
+
+  // 菜单遮罩点击关闭
+  const menuOverlay = document.getElementById('menu-overlay');
+  if (menuOverlay) {
+    menuOverlay.addEventListener('click', function(event) {
+      if (event.target === menuOverlay) {
+        toggleSettingsMenu();
+      }
+    });
+  }
+
+  // 输入对话框遮罩点击关闭
+  const inputDialogOverlay = document.getElementById('input-dialog-overlay');
+  if (inputDialogOverlay) {
+    inputDialogOverlay.addEventListener('click', function(event) {
+      if (event.target === inputDialogOverlay) {
+        cancelInputDialog();
+      }
+    });
+  }
+
+  // 输入对话框按钮
+  const inputDialogCancel = document.getElementById('input-dialog-cancel');
+  if (inputDialogCancel) {
+    inputDialogCancel.addEventListener('click', cancelInputDialog);
+  }
+
+  const inputDialogConfirm = document.getElementById('input-dialog-confirm');
+  if (inputDialogConfirm) {
+    inputDialogConfirm.addEventListener('click', confirmInputDialog);
+  }
+}
+
+// === 初始化 ===
+function initializeApplication() {
+  cacheDomElements();
+  initializeMemory();
+  // 设置默认示例代码
+  if (domElements.codeInput && !domElements.codeInput.value) {
+    domElements.codeInput.value = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
+  }
+  updateCodeHighlighting();
+  initializeEventListeners();
+  updateInputBufferDisplay();
+}
+
+// 页面加载完成后初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApplication);
+} else {
+  initializeApplication();
+}
+</script>
+</body>
+</html>
